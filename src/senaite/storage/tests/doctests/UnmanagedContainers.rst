@@ -69,7 +69,7 @@ Unmanaged containers store samples without fixed positions
     >>> api.get_workflow_status_of(sample)
     'sample_due'
 
-    >>> do_action_for(sample, "receive")
+    >>> success = do_action_for(sample, "receive")
     >>> api.get_workflow_status_of(sample)
     'sample_received'
 
@@ -99,9 +99,9 @@ Configurable physical capacity is enforced for unmanaged containers
     >>> sample_2 = new_sample([service], client, contact, sampletype)
     >>> sample_3 = new_sample([service], client, contact, sampletype)
 
-    >>> do_action_for(sample_1, "receive")
-    >>> do_action_for(sample_2, "receive")
-    >>> do_action_for(sample_3, "receive")
+    >>> success = do_action_for(sample_1, "receive")
+    >>> success = do_action_for(sample_2, "receive")
+    >>> success = do_action_for(sample_3, "receive")
 
     >>> limited.add_object(sample_1)
     True
