@@ -83,6 +83,23 @@ class IStorageSamplesContainerSchema(IStorageLayoutContainerSchema):
         if value <= 0:
             raise Invalid(_("Physical capacity must be greater than zero"))
 
+    @invariant
+    def validate_mode_change(data):
+        """The mode cannot change while the container holds samples, because
+        samples would lose their position (or be dropped from the layout)
+        """
+        context = getattr(data, "__context__", None)
+        if context is None or not hasattr(context, "has_samples"):
+            # add form, there is nothing stored yet
+            return
+        managed = getattr(data, "managed", None)
+        if managed is None:
+            return
+        if bool(managed) != context.is_managed() and context.has_samples():
+            raise Invalid(_(
+                u"Cannot change the container mode while it holds samples. "
+                u"Retrieve them first."))
+
 
 @implementer(IStorageSamplesContainer, IStorageSamplesContainerSchema)
 class StorageSamplesContainer(StorageLayoutContainer):
@@ -108,8 +125,12 @@ class StorageSamplesContainer(StorageLayoutContainer):
         return bool(value)
 
     def setManaged(self, value):
+        value = bool(value)
+        if value != self.is_managed() and self.has_samples():
+            raise ValueError(
+                "Cannot change the container mode while it holds samples")
         mutator = self.mutator("managed")
-        mutator(self, bool(value))
+        mutator(self, value)
         self.sync_managed_capacity()
         self.rebuild_layout()
         self.reindexObject(idxs=["is_full", "get_samples_uids"])

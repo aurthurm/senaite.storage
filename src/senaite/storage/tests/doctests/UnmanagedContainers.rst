@@ -120,3 +120,109 @@ Configurable physical capacity is enforced for unmanaged containers
 
     >>> api.get_workflow_status_of(sample_3)
     'sample_received'
+
+The mode cannot change while the container holds samples
+........................................................
+
+Changing the mode of a container that holds samples would drop them from the
+layout (unmanaged to managed) or leave them with stale positions, so it is
+rejected. The form invariant is what protects the edit form:
+
+    >>> from zope.interface import Invalid
+    >>> from senaite.storage.content.storage_samples_container import IStorageSamplesContainerSchema
+
+    >>> class FormData(object):
+    ...     rows = 1
+    ...     columns = 1
+    ...     physical_capacity = None
+    ...     def __init__(self, context, managed):
+    ...         self.__context__ = context
+    ...         self.managed = managed
+
+    >>> def check_form(container, managed):
+    ...     try:
+    ...         IStorageSamplesContainerSchema.validateInvariants(FormData(container, managed))
+    ...     except Invalid as e:
+    ...         return str(e)
+    ...     return "valid"
+
+``unmanaged`` still holds the first sample, so it cannot become managed:
+
+    >>> unmanaged.has_samples()
+    True
+
+    >>> check_form(unmanaged, True)
+    'Cannot change the container mode while it holds samples. Retrieve them first.'
+
+    >>> unmanaged.setManaged(True)
+    Traceback (most recent call last):
+    ...
+    ValueError: Cannot change the container mode while it holds samples
+
+    >>> unmanaged.is_managed()
+    False
+
+    >>> len(unmanaged.get_samples_uids())
+    1
+
+Keeping the same mode is always fine:
+
+    >>> check_form(unmanaged, False)
+    'valid'
+
+The same applies to a managed container with a stored sample:
+
+    >>> box = api.create(container, "StorageSamplesContainer", title="Box", Rows=2, Columns=2)
+    >>> sample_4 = new_sample([service], client, contact, sampletype)
+    >>> success = do_action_for(sample_4, "receive")
+    >>> box.add_object_at(sample_4, 0, 0)
+    True
+
+    >>> check_form(box, False)
+    'Cannot change the container mode while it holds samples. Retrieve them first.'
+
+    >>> box.setManaged(False)
+    Traceback (most recent call last):
+    ...
+    ValueError: Cannot change the container mode while it holds samples
+
+    >>> box.is_managed()
+    True
+
+Once the samples are retrieved, the mode can change:
+
+    >>> success = do_action_for(sample, "recover")
+    >>> unmanaged.has_samples()
+    False
+
+    >>> check_form(unmanaged, True)
+    'valid'
+
+    >>> unmanaged.setManaged(True)
+    >>> unmanaged.is_managed()
+    True
+
+    >>> success = do_action_for(sample_4, "recover")
+    >>> box.setManaged(False)
+    >>> box.is_managed()
+    False
+
+The edit form does not go through ``setManaged``, so the modified event must
+rebuild the layout when the mode changes. Otherwise an empty unmanaged
+container switched to managed would have no positions to store samples in:
+
+    >>> from zope.event import notify
+    >>> from zope.lifecycleevent import Attributes
+    >>> from zope.lifecycleevent import ObjectModifiedEvent
+
+    >>> flip = api.create(container, "StorageSamplesContainer", title="Flip", Managed=False)
+    >>> len(flip.getPositionsLayout())
+    0
+
+    >>> flip.managed = True
+    >>> notify(ObjectModifiedEvent(flip, Attributes(IStorageSamplesContainerSchema, "managed")))
+    >>> len(flip.getPositionsLayout())
+    1
+
+    >>> flip.get_available_positions()
+    [(0, 0)]
